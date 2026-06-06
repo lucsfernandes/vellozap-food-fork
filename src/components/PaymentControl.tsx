@@ -1,0 +1,325 @@
+
+import { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { CalendarIcon, Download, DollarSign, Clock, CheckCircle } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { formatCurrency } from '@/utils/currency';
+
+interface Employee {
+  id: string;
+  name: string;
+  role: string;
+  payment_type: string;
+  payment_value: number;
+  pix_key: string;
+  bank_name: string;
+  agency: string;
+  account: string;
+}
+
+interface PaymentRecord {
+  id: string;
+  employee: Employee;
+  period_start: string;
+  period_end: string;
+  total_days: number;
+  total_hours: number;
+  total_amount: number;
+  payment_status: string;
+  payment_date: string;
+}
+
+const PaymentControl = () => {
+  // Mock data para demonstração
+  const mockEmployees: Employee[] = [
+    {
+      id: '1',
+      name: 'João Silva',
+      role: 'motoboy',
+      payment_type: 'daily',
+      payment_value: 80.00,
+      pix_key: 'joao@exemplo.com',
+      bank_name: 'Banco do Brasil',
+      agency: '1234',
+      account: '56789-0'
+    },
+    {
+      id: '2',
+      name: 'Maria Santos',
+      role: 'atendente',
+      payment_type: 'hourly',
+      payment_value: 15.00,
+      pix_key: '(11) 88888-8888',
+      bank_name: '',
+      agency: '',
+      account: ''
+    }
+  ];
+
+  const [payments, setPayments] = useState<PaymentRecord[]>([]);
+  const [selectedPeriod, setSelectedPeriod] = useState('current_month');
+  const [customStartDate, setCustomStartDate] = useState<Date>();
+  const [customEndDate, setCustomEndDate] = useState<Date>();
+  const [isCalculating, setIsCalculating] = useState(false);
+  const { toast } = useToast();
+
+  const getPeriodDates = () => {
+    const now = new Date();
+    let startDate: Date, endDate: Date;
+
+    switch (selectedPeriod) {
+      case 'current_month':
+        startDate = startOfMonth(now);
+        endDate = endOfMonth(now);
+        break;
+      case 'last_month':
+        const lastMonth = subMonths(now, 1);
+        startDate = startOfMonth(lastMonth);
+        endDate = endOfMonth(lastMonth);
+        break;
+      case 'custom':
+        if (!customStartDate || !customEndDate) return { startDate: null, endDate: null };
+        startDate = customStartDate;
+        endDate = customEndDate;
+        break;
+      default:
+        startDate = startOfMonth(now);
+        endDate = endOfMonth(now);
+    }
+
+    return { startDate, endDate };
+  };
+
+  const calculatePayments = () => {
+    const { startDate, endDate } = getPeriodDates();
+    if (!startDate || !endDate) return;
+
+    setIsCalculating(true);
+    
+    // Simular cálculo com dados mock
+    setTimeout(() => {
+      const mockPayments: PaymentRecord[] = mockEmployees.map((employee, index) => ({
+        id: `payment-${employee.id}`,
+        employee,
+        period_start: format(startDate, 'yyyy-MM-dd'),
+        period_end: format(endDate, 'yyyy-MM-dd'),
+        total_days: employee.payment_type === 'daily' ? 22 : 0,
+        total_hours: employee.payment_type === 'hourly' ? 176 : 0,
+        total_amount: employee.payment_type === 'daily' ? 22 * employee.payment_value : 
+                     employee.payment_type === 'hourly' ? 176 * employee.payment_value :
+                     employee.payment_value,
+        payment_status: 'pending',
+        payment_date: ''
+      }));
+
+      setPayments(mockPayments);
+      setIsCalculating(false);
+      
+      toast({
+        title: "Cálculos realizados",
+        description: "Pagamentos calculados com sucesso.",
+      });
+    }, 1000);
+  };
+
+  const markAsPaid = (paymentId: string) => {
+    setPayments(payments.map(payment => 
+      payment.id === paymentId 
+        ? { ...payment, payment_status: 'paid', payment_date: new Date().toISOString() }
+        : payment
+    ));
+
+    toast({
+      title: "Pagamento registrado",
+      description: "Pagamento marcado como pago.",
+    });
+  };
+
+  const exportToCSV = () => {
+    const csvContent = [
+      ['Nome', 'Função', 'Forma de Pagamento', 'Total Recebido', 'Chave PIX', 'Banco', 'Agência', 'Conta', 'Status'].join(','),
+      ...payments.map(payment => [
+        payment.employee.name,
+        payment.employee.role,
+        payment.employee.payment_type === 'daily' ? 'Por diária' : 
+        payment.employee.payment_type === 'hourly' ? 'Por hora' : 'Mensal',
+        payment.total_amount.toFixed(2).replace('.', ','),
+        payment.employee.pix_key,
+        payment.employee.bank_name || '',
+        payment.employee.agency || '',
+        payment.employee.account || '',
+        payment.payment_status === 'paid' ? 'Pago' : 'Pendente'
+      ].join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pagamentos-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const getRoleLabel = (role: string) => {
+    const roleMap: { [key: string]: string } = {
+      auxiliar_cozinha: "Auxiliar de Cozinha",
+      atendente: "Atendente",
+      cozinheiro: "Cozinheiro",
+      chef: "Chef",
+      pizzaiolo: "Pizzaiolo",
+      motoboy: "Motoboy"
+    };
+    return roleMap[role] || role;
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <DollarSign className="h-6 w-6 text-orange-600" />
+            <span>Controle de Pagamentos</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+              <SelectTrigger className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="current_month">Mês Atual</SelectItem>
+                <SelectItem value="last_month">Mês Passado</SelectItem>
+                <SelectItem value="custom">Período Personalizado</SelectItem>
+              </SelectContent>
+            </Select>
+            {payments.length > 0 && (
+              <Button onClick={exportToCSV} variant="outline" size="sm">
+                <Download className="h-4 w-4 mr-2" />
+                Exportar CSV
+              </Button>
+            )}
+          </div>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {selectedPeriod === 'custom' && (
+          <div className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Data Início</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {customStartDate ? format(customStartDate, 'dd/MM/yyyy') : 'Selecionar'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={customStartDate}
+                    onSelect={setCustomStartDate}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Data Fim</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {customEndDate ? format(customEndDate, 'dd/MM/yyyy') : 'Selecionar'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={customEndDate}
+                    onSelect={setCustomEndDate}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-between items-center">
+          <p className="text-sm text-gray-600">
+            {mockEmployees.length} funcionário(s) cadastrado(s) com informações de pagamento
+          </p>
+          <Button 
+            onClick={calculatePayments} 
+            disabled={isCalculating}
+            className="bg-orange-600 hover:bg-orange-700"
+          >
+            <Clock className="h-4 w-4 mr-2" />
+            {isCalculating ? 'Calculando...' : 'Calcular Pagamentos'}
+          </Button>
+        </div>
+
+        {payments.length === 0 ? (
+          <div className="text-center py-8">
+            <DollarSign className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-medium mb-2">Nenhum pagamento calculado</h3>
+            <p className="text-muted-foreground mb-4">
+              Clique em "Calcular Pagamentos" para gerar os valores do período selecionado.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {payments.map((payment) => (
+              <div key={payment.id} className="border rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-3 mb-2">
+                      <h3 className="text-lg font-semibold">{payment.employee.name}</h3>
+                      <Badge variant="outline">
+                        {getRoleLabel(payment.employee.role)}
+                      </Badge>
+                      <Badge className={payment.payment_status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
+                        {payment.payment_status === 'paid' ? 'Pago' : 'Pendente'}
+                      </Badge>
+                    </div>
+                    <div className="text-sm text-gray-600 space-y-1">
+                      <p>📅 Período: {format(new Date(payment.period_start), 'dd/MM/yyyy')} - {format(new Date(payment.period_end), 'dd/MM/yyyy')}</p>
+                      {payment.total_days > 0 && <p>📊 Dias trabalhados: {payment.total_days}</p>}
+                      {payment.total_hours > 0 && <p>⏰ Horas trabalhadas: {payment.total_hours}</p>}
+                      <p>💰 <strong>Total: {formatCurrency(payment.total_amount)}</strong></p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col space-y-2">
+                    {payment.payment_status === 'pending' && (
+                      <Button
+                        size="sm"
+                        onClick={() => markAsPaid(payment.id)}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        Marcar como Pago
+                      </Button>
+                    )}
+                    {payment.payment_status === 'paid' && payment.payment_date && (
+                      <p className="text-xs text-green-600">
+                        Pago em {format(new Date(payment.payment_date), 'dd/MM/yyyy')}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+export default PaymentControl;
