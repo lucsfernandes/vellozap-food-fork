@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { apiClient } from '@/lib/apiClient';
 import { useRestaurantProfile } from '@/hooks/useRestaurantProfile';
 import { Plus, Trash2, Users, UserCheck } from 'lucide-react';
 
@@ -41,15 +41,16 @@ const TeamStep = ({ onValidChange }: TeamStepProps) => {
     if (!profile?.id) return;
 
     try {
-      const { data, error } = await supabase
-        .from('employees')
-        .select('*')
-        .eq('restaurant_id', profile.id);
-
-      if (error) {
-        console.error('Error loading employees:', error);
-        return;
-      }
+      const { data } = await apiClient.get<Array<{
+        id: string;
+        name: string;
+        role: string;
+        phone: string | null;
+        email: string | null;
+        payment_type: string | null;
+        payment_value: number | null;
+        pix_key: string | null;
+      }>>('/employees');
 
       if (data && data.length > 0) {
         setEmployees(data.map(emp => ({
@@ -59,7 +60,8 @@ const TeamStep = ({ onValidChange }: TeamStepProps) => {
           phone: emp.phone || '',
           email: emp.email || '',
           payment_type: emp.payment_type || '',
-          payment_value: emp.payment_value || 0,
+          // API integer cents → UI decimal BRL.
+          payment_value: emp.payment_value ? emp.payment_value / 100 : 0,
           pix_key: emp.pix_key || ''
         })));
       }
@@ -98,34 +100,20 @@ const TeamStep = ({ onValidChange }: TeamStepProps) => {
       const validEmployees = employees.filter(emp => emp.name.trim() !== '');
 
       for (const employee of validEmployees) {
+        const payload = {
+          name: employee.name,
+          role: employee.role,
+          phone: employee.phone || null,
+          email: employee.email || null,
+          payment_type: employee.payment_type || null,
+          // UI decimal BRL → API integer cents.
+          payment_value: employee.payment_value ? Math.round(employee.payment_value * 100) : null,
+          pix_key: employee.pix_key || null,
+        };
         if (employee.id) {
-          // Update existing employee
-          await supabase
-            .from('employees')
-            .update({
-              name: employee.name,
-              role: employee.role,
-              phone: employee.phone || null,
-              email: employee.email || null,
-              payment_type: employee.payment_type || null,
-              payment_value: employee.payment_value || null,
-              pix_key: employee.pix_key || null
-            })
-            .eq('id', employee.id);
+          await apiClient.patch(`/employees/${employee.id}`, payload);
         } else {
-          // Create new employee
-          await supabase
-            .from('employees')
-            .insert({
-              restaurant_id: profile.id,
-              name: employee.name,
-              role: employee.role,
-              phone: employee.phone || null,
-              email: employee.email || null,
-              payment_type: employee.payment_type || null,
-              payment_value: employee.payment_value || null,
-              pix_key: employee.pix_key || null
-            });
+          await apiClient.post('/employees', payload);
         }
       }
 

@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { apiClient } from '@/lib/apiClient';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantProfile } from '@/hooks/useRestaurantProfile';
 import { Plus, Trash2, Package, DollarSign } from 'lucide-react';
@@ -48,23 +48,20 @@ const ProductsStep = ({ onValidChange }: ProductsStepProps) => {
     if (!profile?.id) return;
 
     try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .eq('restaurant_id', profile.id)
-        .limit(5);
-
-      if (error) {
-        console.error('Error loading products:', error);
-        return;
-      }
+      const { data } = await apiClient.get<Array<{
+        id: string;
+        name: string;
+        description: string | null;
+        price: number;
+      }>>('/products', { params: { limit: 5 } });
 
       if (data && data.length > 0) {
         setProducts(data.map(product => ({
           id: product.id,
           name: product.name,
           description: product.description || '',
-          price: product.price.toString()
+          // API returns integer cents; UI works in decimal BRL.
+          price: (product.price / 100).toString()
         })));
       }
     } catch (error) {
@@ -100,27 +97,21 @@ const ProductsStep = ({ onValidChange }: ProductsStepProps) => {
       );
 
       for (const product of validProducts) {
+        // UI decimal BRL → API integer cents.
+        const priceCents = Math.round(parseFloat(product.price) * 100);
         if (product.id) {
-          // Update existing product
-          await supabase
-            .from('products')
-            .update({
-              name: product.name,
-              description: product.description,
-              price: parseFloat(product.price)
-            })
-            .eq('id', product.id);
+          await apiClient.patch(`/products/${product.id}`, {
+            name: product.name,
+            description: product.description,
+            price: priceCents,
+          });
         } else {
-          // Create new product
-          await supabase
-            .from('products')
-            .insert({
-              restaurant_id: profile.id,
-              name: product.name,
-              description: product.description,
-              price: parseFloat(product.price),
-              is_available: true
-            });
+          await apiClient.post('/products', {
+            name: product.name,
+            description: product.description,
+            price: priceCents,
+            is_available: true,
+          });
         }
       }
 
