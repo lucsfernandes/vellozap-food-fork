@@ -40,7 +40,10 @@ const LandingPage = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
-              <div className="text-2xl font-bold text-orange-600">📱 VelloZap</div>
+              <div className="text-2xl font-bold text-orange-600 flex items-center gap-2">
+                <img src="/mentor.gif" alt="VelloZap" className="h-6 w-auto" />
+                VelloZap
+              </div>
             </div>
             
             {/* Desktop Navigation */}
@@ -713,7 +716,10 @@ const LandingPage = () => {
         <div className="max-w-7xl mx-auto px-4">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div>
-              <div className="text-2xl font-bold text-orange-600 mb-4">📱 VelloZap</div>
+              <div className="text-2xl font-bold text-orange-600 mb-4 flex items-center gap-2">
+                <img src="/mentor.gif" alt="VelloZap" className="h-6 w-auto" />
+                VelloZap
+              </div>
               <p className="text-gray-400">
                 A plataforma completa para delivery via WhatsApp.
               </p>
