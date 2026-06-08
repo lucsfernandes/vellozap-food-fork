@@ -1,158 +1,42 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Send, MessageCircle, Clock, CheckCheck, Phone } from "lucide-react";
+import { Send, MessageCircle, CheckCheck, Phone, Loader2 } from "lucide-react";
+import { useWhatsApp } from "@/hooks/useWhatsApp";
 
-// Tipos para as mensagens e conversas
-interface Message {
-  id: string;
-  text: string;
-  timestamp: string;
-  isFromCustomer: boolean;
-  status: 'sent' | 'delivered' | 'read';
-}
-
-interface Conversation {
-  id: string;
-  customerName: string;
-  customerPhone: string;
-  lastMessage: string;
-  lastMessageTime: string;
-  unreadCount: number;
-  status: 'nova' | 'em_atendimento' | 'finalizada';
-  orderId?: string;
-  messages: Message[];
-}
+const formatTime = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
 
 const WhatsAppChat = () => {
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [messageText, setMessageText] = useState("");
   const [filter, setFilter] = useState("todas");
+  const [sending, setSending] = useState(false);
 
-  // Dados simulados (mock data)
-  const mockConversations: Conversation[] = [
-    {
-      id: "1",
-      customerName: "João Silva",
-      customerPhone: "(11) 99999-1234",
-      lastMessage: "Obrigado! Quando fica pronto?",
-      lastMessageTime: "14:30",
-      unreadCount: 2,
-      status: "nova",
-      orderId: "#001",
-      messages: [
-        {
-          id: "1",
-          text: "Olá! Gostaria de fazer um pedido",
-          timestamp: "14:25",
-          isFromCustomer: true,
-          status: "read"
-        },
-        {
-          id: "2",
-          text: "Olá João! Claro, em que posso ajudá-lo?",
-          timestamp: "14:26",
-          isFromCustomer: false,
-          status: "read"
-        },
-        {
-          id: "3",
-          text: "Quero uma pizza margherita grande",
-          timestamp: "14:28",
-          isFromCustomer: true,
-          status: "read"
-        },
-        {
-          id: "4",
-          text: "Perfeito! Pizza margherita grande - R$ 35,90. Confirma o pedido?",
-          timestamp: "14:29",
-          isFromCustomer: false,
-          status: "delivered"
-        },
-        {
-          id: "5",
-          text: "Sim, confirmo! Obrigado! Quando fica pronto?",
-          timestamp: "14:30",
-          isFromCustomer: true,
-          status: "sent"
-        }
-      ]
-    },
-    {
-      id: "2",
-      customerName: "Maria Santos",
-      customerPhone: "(11) 99999-5678",
-      lastMessage: "Pedido confirmado, obrigada!",
-      lastMessageTime: "13:45",
-      unreadCount: 0,
-      status: "finalizada",
-      orderId: "#002",
-      messages: [
-        {
-          id: "1",
-          text: "Boa tarde! Gostaria de ver o cardápio",
-          timestamp: "13:40",
-          isFromCustomer: true,
-          status: "read"
-        },
-        {
-          id: "2",
-          text: "Boa tarde Maria! Aqui está nosso cardápio: [link]",
-          timestamp: "13:41",
-          isFromCustomer: false,
-          status: "read"
-        },
-        {
-          id: "3",
-          text: "Vou querer uma pizza portuguesa média",
-          timestamp: "13:43",
-          isFromCustomer: true,
-          status: "read"
-        },
-        {
-          id: "4",
-          text: "Pizza portuguesa média - R$ 32,90. Pedido confirmado!",
-          timestamp: "13:44",
-          isFromCustomer: false,
-          status: "read"
-        },
-        {
-          id: "5",
-          text: "Pedido confirmado, obrigada!",
-          timestamp: "13:45",
-          isFromCustomer: true,
-          status: "read"
-        }
-      ]
-    },
-    {
-      id: "3",
-      customerName: "Pedro Costa",
-      customerPhone: "(11) 99999-9012",
-      lastMessage: "Olá, vocês entregam na Vila Mariana?",
-      lastMessageTime: "12:15",
-      unreadCount: 1,
-      status: "nova",
-      messages: [
-        {
-          id: "1",
-          text: "Olá, vocês entregam na Vila Mariana?",
-          timestamp: "12:15",
-          isFromCustomer: true,
-          status: "sent"
-        }
-      ]
+  const {
+    conversations,
+    loading,
+    messagesByConversation,
+    messagesLoading,
+    getMessages,
+    sendMessage,
+  } = useWhatsApp();
+
+  // Load messages whenever a conversation is selected.
+  useEffect(() => {
+    if (selectedConversation) {
+      void getMessages(selectedConversation);
     }
-  ];
+  }, [selectedConversation, getMessages]);
 
-  const filteredConversations = mockConversations.filter(conversation => {
+  const filteredConversations = conversations.filter((conversation) => {
     switch (filter) {
       case "nao_lidas":
-        return conversation.unreadCount > 0;
+        return conversation.unread_count > 0;
       case "finalizadas":
         return conversation.status === "finalizada";
       default:
@@ -160,7 +44,10 @@ const WhatsAppChat = () => {
     }
   });
 
-  const currentConversation = mockConversations.find(c => c.id === selectedConversation);
+  const currentConversation = conversations.find((c) => c.id === selectedConversation);
+  const currentMessages = selectedConversation
+    ? messagesByConversation[selectedConversation] ?? []
+    : [];
 
   const getStatusBadge = (status: string) => {
     const statusMap = {
@@ -169,6 +56,7 @@ const WhatsAppChat = () => {
       "finalizada": { label: "Finalizada", variant: "outline" as const, color: "bg-green-500" }
     };
     const statusInfo = statusMap[status as keyof typeof statusMap];
+    if (!statusInfo) return null;
     return (
       <div className="flex items-center space-x-2">
         <div className={`w-2 h-2 rounded-full ${statusInfo.color}`}></div>
@@ -177,16 +65,14 @@ const WhatsAppChat = () => {
     );
   };
 
-  const sendMessage = () => {
+  const handleSend = async () => {
     if (!messageText.trim() || !selectedConversation) return;
-    
-    // Aqui será implementada a lógica de envio via API do WhatsApp
-    console.log(`Enviando mensagem para ${currentConversation?.customerName}: ${messageText}`);
-    setMessageText("");
-  };
-
-  const markAsRead = (conversationId: string) => {
-    console.log(`Marcando conversa ${conversationId} como lida`);
+    setSending(true);
+    const sent = await sendMessage(selectedConversation, messageText.trim());
+    if (sent) {
+      setMessageText("");
+    }
+    setSending(false);
   };
 
   return (
@@ -212,49 +98,57 @@ const WhatsAppChat = () => {
           </Select>
         </CardHeader>
         <CardContent className="flex-1 overflow-y-auto p-0">
-          <div className="space-y-2">
-            {filteredConversations.map((conversation) => (
-              <div
-                key={conversation.id}
-                className={`p-4 border-b cursor-pointer hover:bg-gray-50 transition-colors ${
-                  selectedConversation === conversation.id ? 'bg-orange-50 border-l-4 border-orange-600' : ''
-                }`}
-                onClick={() => {
-                  setSelectedConversation(conversation.id);
-                  if (conversation.unreadCount > 0) {
-                    markAsRead(conversation.id);
-                  }
-                }}
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <h4 className="font-medium text-gray-900">{conversation.customerName}</h4>
-                    <div className="flex items-center space-x-2 text-xs text-gray-500">
-                      <Phone className="h-3 w-3" />
-                      <span>{conversation.customerPhone}</span>
+          {loading ? (
+            <div className="flex items-center justify-center py-10 text-gray-400">
+              <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+          ) : filteredConversations.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 px-4 text-center text-gray-500">
+              <MessageCircle className="h-10 w-10 text-gray-300 mb-2" />
+              <p className="text-sm">Nenhuma conversa por aqui ainda</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredConversations.map((conversation) => (
+                <div
+                  key={conversation.id}
+                  className={`p-4 border-b cursor-pointer hover:bg-gray-50 transition-colors ${
+                    selectedConversation === conversation.id ? 'bg-orange-50 border-l-4 border-orange-600' : ''
+                  }`}
+                  onClick={() => setSelectedConversation(conversation.id)}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <h4 className="font-medium text-gray-900">
+                        {conversation.customer_name ?? conversation.customer_phone}
+                      </h4>
+                      <div className="flex items-center space-x-2 text-xs text-gray-500">
+                        <Phone className="h-3 w-3" />
+                        <span>{conversation.customer_phone}</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-gray-500 mb-1">{formatTime(conversation.last_message_at)}</div>
+                      {conversation.unread_count > 0 && (
+                        <Badge className="bg-green-600 text-white text-xs">
+                          {conversation.unread_count}
+                        </Badge>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs text-gray-500 mb-1">{conversation.lastMessageTime}</div>
-                    {conversation.unreadCount > 0 && (
-                      <Badge className="bg-green-600 text-white text-xs">
-                        {conversation.unreadCount}
+                  <p className="text-sm text-gray-600 truncate mb-2">{conversation.last_message ?? ''}</p>
+                  <div className="flex justify-between items-center">
+                    {getStatusBadge(conversation.status)}
+                    {conversation.order_id && (
+                      <Badge variant="outline" className="text-xs">
+                        Pedido #{conversation.order_id.slice(0, 8)}
                       </Badge>
                     )}
                   </div>
                 </div>
-                <p className="text-sm text-gray-600 truncate mb-2">{conversation.lastMessage}</p>
-                <div className="flex justify-between items-center">
-                  {getStatusBadge(conversation.status)}
-                  {conversation.orderId && (
-                    <Badge variant="outline" className="text-xs">
-                      Pedido {conversation.orderId}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -265,15 +159,17 @@ const WhatsAppChat = () => {
             <CardHeader className="pb-4 border-b">
               <div className="flex justify-between items-center">
                 <div>
-                  <CardTitle className="text-lg">{currentConversation.customerName}</CardTitle>
+                  <CardTitle className="text-lg">
+                    {currentConversation.customer_name ?? currentConversation.customer_phone}
+                  </CardTitle>
                   <div className="flex items-center space-x-4 text-sm text-gray-500">
                     <div className="flex items-center space-x-1">
                       <Phone className="h-4 w-4" />
-                      <span>{currentConversation.customerPhone}</span>
+                      <span>{currentConversation.customer_phone}</span>
                     </div>
-                    {currentConversation.orderId && (
+                    {currentConversation.order_id && (
                       <Badge variant="outline">
-                        Pedido {currentConversation.orderId}
+                        Pedido #{currentConversation.order_id.slice(0, 8)}
                       </Badge>
                     )}
                   </div>
@@ -281,35 +177,41 @@ const WhatsAppChat = () => {
                 {getStatusBadge(currentConversation.status)}
               </div>
             </CardHeader>
-            
+
             {/* Área de mensagens */}
             <CardContent className="flex-1 overflow-y-auto p-4">
-              <div className="space-y-4">
-                {currentConversation.messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.isFromCustomer ? 'justify-start' : 'justify-end'}`}
-                  >
+              {messagesLoading && currentMessages.length === 0 ? (
+                <div className="flex items-center justify-center py-10 text-gray-400">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {currentMessages.map((message) => (
                     <div
-                      className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                        message.isFromCustomer
-                          ? 'bg-gray-100 text-gray-900'
-                          : 'bg-green-600 text-white'
-                      }`}
+                      key={message.id}
+                      className={`flex ${message.is_from_customer ? 'justify-start' : 'justify-end'}`}
                     >
-                      <p className="text-sm">{message.text}</p>
-                      <div className={`flex items-center justify-end space-x-1 mt-1 text-xs ${
-                        message.isFromCustomer ? 'text-gray-500' : 'text-green-100'
-                      }`}>
-                        <span>{message.timestamp}</span>
-                        {!message.isFromCustomer && (
-                          <CheckCheck className="h-3 w-3" />
-                        )}
+                      <div
+                        className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                          message.is_from_customer
+                            ? 'bg-gray-100 text-gray-900'
+                            : 'bg-green-600 text-white'
+                        }`}
+                      >
+                        <p className="text-sm">{message.text}</p>
+                        <div className={`flex items-center justify-end space-x-1 mt-1 text-xs ${
+                          message.is_from_customer ? 'text-gray-500' : 'text-green-100'
+                        }`}>
+                          <span>{formatTime(message.sent_at ?? message.created_at)}</span>
+                          {!message.is_from_customer && (
+                            <CheckCheck className="h-3 w-3" />
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
 
             {/* Campo de digitação */}
@@ -319,20 +221,18 @@ const WhatsAppChat = () => {
                   value={messageText}
                   onChange={(e) => setMessageText(e.target.value)}
                   placeholder="Digite sua mensagem..."
-                  onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSend()}
                   className="flex-1"
+                  disabled={sending}
                 />
-                <Button 
-                  onClick={sendMessage}
+                <Button
+                  onClick={handleSend}
                   className="bg-green-600 hover:bg-green-700"
-                  disabled={!messageText.trim()}
+                  disabled={!messageText.trim() || sending}
                 >
-                  <Send className="h-4 w-4" />
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </Button>
               </div>
-              <p className="text-xs text-gray-500 mt-2">
-                💡 Integração com WhatsApp Business será implementada em breve
-              </p>
             </div>
           </>
         ) : (

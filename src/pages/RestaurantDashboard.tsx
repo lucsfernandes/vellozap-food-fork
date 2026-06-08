@@ -38,6 +38,8 @@ import {
   Legend
 } from 'recharts';
 import { formatCurrency } from '@/utils/currency';
+import { useOrders, type StatsPeriod, type OrderStatus, type OrderDetailed } from '@/hooks/useOrders';
+import { useAuth } from '@/hooks/useAuth';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
 import WhatsAppChat from '@/components/WhatsAppChat';
 import PromotionsManagement from '@/components/PromotionsManagement';
@@ -47,119 +49,78 @@ import OrderExport from '@/components/OrderExport';
 import MenuManagement from '@/components/MenuManagement';
 import Header from '@/components/Header';
 
+const weekdayFormat = (iso: string) =>
+  new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
 const RestaurantDashboard = () => {
-  const [selectedOrder, setSelectedOrder] = useState<any>(null);
+  const [selectedOrder, setSelectedOrder] = useState<OrderDetailed | null>(null);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [orderStatusFilter, setOrderStatusFilter] = useState('all');
   const [overviewOrderStatusFilter, setOverviewOrderStatusFilter] = useState('all');
   const [statsPeriodFilter, setStatsPeriodFilter] = useState('mes');
   const [activeTab, setActiveTab] = useState('overview');
 
-  // Mock data para demonstração com formatação monetária brasileira
+  const { signOut } = useAuth();
+  const {
+    orders: apiOrders,
+    stats: apiStats,
+    getOrder,
+    exportOrders,
+  } = useOrders(statsPeriodFilter as StatsPeriod);
+
+  // Stats from the backend (money fields arrive as integer cents → reais).
   const stats = {
-    totalOrders: 127,
-    totalRevenue: 2840.50,
-    avgOrderValue: 22.36,
-    pendingOrders: 8,
-    deliveredOrders: 119,
-    ifoodSavings: 426.08 // 15% de economia em taxas do iFood
+    totalOrders: apiStats?.totalOrders ?? 0,
+    totalRevenue: (apiStats?.totalRevenue ?? 0) / 100,
+    avgOrderValue: (apiStats?.avgOrderValue ?? 0) / 100,
+    pendingOrders: apiStats?.pendingOrders ?? 0,
+    deliveredOrders: apiStats?.deliveredOrders ?? 0,
+    // Estimated savings vs. iFood's ~15% commission, derived from real revenue.
+    ifoodSavings: ((apiStats?.totalRevenue ?? 0) / 100) * 0.15,
   };
 
-  // Mock data detalhado para os pedidos
-  const detailedOrders = [
-    {
-      id: '#001',
-      customer: 'João Silva',
-      phone: '(11) 99999-9999',
-      address: 'Rua das Flores, 123 - Vila Madalena, São Paulo - SP',
-      items: [
-        { name: 'Pizza Margherita G', quantity: 1, unitPrice: 32.90, total: 32.90 },
-        { name: 'Coca-Cola 350ml', quantity: 1, unitPrice: 3.00, total: 3.00 }
-      ],
-      value: 35.90,
-      status: 'pending',
-      time: '14:23',
-      paymentMethod: 'PIX',
-      paymentStatus: 'Pendente',
-      notes: 'Sem cebola na pizza'
-    },
-    {
-      id: '#002',
-      customer: 'Maria Santos',
-      phone: '(11) 88888-8888',
-      address: 'Av. Paulista, 456 - Bela Vista, São Paulo - SP',
-      items: [
-        { name: 'Hambúrguer Clássico', quantity: 1, unitPrice: 25.50, total: 25.50 },
-        { name: 'Batata Frita', quantity: 1, unitPrice: 8.00, total: 8.00 }
-      ],
-      value: 33.50,
-      status: 'preparing',
-      time: '14:15',
-      paymentMethod: 'Dinheiro',
-      paymentStatus: 'Pago',
-      notes: ''
-    },
-    {
-      id: '#003',
-      customer: 'Pedro Costa',
-      phone: '(11) 77777-7777',
-      address: 'Rua Augusta, 789 - Consolação, São Paulo - SP',
-      items: [
-        { name: 'Salada Caesar', quantity: 1, unitPrice: 15.90, total: 15.90 },
-        { name: 'Água 500ml', quantity: 1, unitPrice: 3.00, total: 3.00 }
-      ],
-      value: 18.90,
-      status: 'ready',
-      time: '14:10',
-      paymentMethod: 'Cartão de Débito',
-      paymentStatus: 'Pago',
-      notes: 'Molho à parte'
-    },
-    {
-      id: '#004',
-      customer: 'Ana Lima',
-      phone: '(11) 66666-6666',
-      address: 'Rua dos Três Irmãos, 321 - Vila Progredior, São Paulo - SP',
-      items: [
-        { name: 'Pizza Calabresa G', quantity: 1, unitPrice: 38.00, total: 38.00 },
-        { name: 'Guaraná 350ml', quantity: 1, unitPrice: 4.00, total: 4.00 }
-      ],
-      value: 42.00,
-      status: 'delivered',
-      time: '13:45',
-      paymentMethod: 'PIX',
-      paymentStatus: 'Pago',
-      notes: ''
-    }
-  ];
-
-  const orders = detailedOrders.map(order => ({
+  // Map the real order list rows to the display shape used by the JSX.
+  const orders = apiOrders.map((order) => ({
     id: order.id,
-    customer: order.customer,
-    items: order.items.map(item => `${item.name}`).join(', '),
-    total: formatCurrency(order.value),
+    displayId: `#${order.id.slice(0, 8)}`,
+    customer: order.customer_name,
+    subtitle: order.customer_phone,
+    total: formatCurrency(order.total_amount / 100),
     status: order.status,
-    time: order.time,
-    phone: order.phone
+    time: weekdayFormat(order.created_at),
   }));
 
   const recentOrders = orders.slice(0, 5);
 
-  const handleOrderClick = (orderId: string) => {
-    const order = detailedOrders.find(o => o.id === orderId);
+  const handleOrderClick = async (orderId: string) => {
+    const order = await getOrder(orderId);
     if (order) {
       setSelectedOrder(order);
       setIsOrderModalOpen(true);
     }
   };
 
-  const filteredOrders = orderStatusFilter === 'all' 
-    ? orders 
+  const filteredOrders = orderStatusFilter === 'all'
+    ? orders
     : orders.filter(order => order.status === orderStatusFilter);
 
-  const filteredOverviewOrders = overviewOrderStatusFilter === 'all' 
-    ? recentOrders 
+  const filteredOverviewOrders = overviewOrderStatusFilter === 'all'
+    ? recentOrders
     : recentOrders.filter(order => order.status === overviewOrderStatusFilter);
+
+  // Weekly sales derived from the real orders (grouped by weekday, in reais).
+  const salesData = (() => {
+    const labels = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    const totals = labels.map((name) => ({ name, vendas: 0 }));
+    apiOrders.forEach((o) => {
+      totals[new Date(o.created_at).getDay()].vendas += o.total_amount / 100;
+    });
+    // Reorder Monday→Sunday for display.
+    return [1, 2, 3, 4, 5, 6, 0].map((i) => totals[i]);
+  })();
+
+  // Per-product breakdown is not available from the order-list endpoint.
+  const productData: Array<{ name: string; value: number; color: string }> = [];
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -183,30 +144,12 @@ const RestaurantDashboard = () => {
     }
   };
 
-  // Mock data para gráficos
-  const salesData = [
-    { name: 'Seg', vendas: 120 },
-    { name: 'Ter', vendas: 180 },
-    { name: 'Qua', vendas: 150 },
-    { name: 'Qui', vendas: 220 },
-    { name: 'Sex', vendas: 280 },
-    { name: 'Sáb', vendas: 350 },
-    { name: 'Dom', vendas: 300 },
-  ];
-
-  const productData = [
-    { name: 'Pizza', value: 45, color: '#f97316' },
-    { name: 'Hambúrguer', value: 30, color: '#3b82f6' },
-    { name: 'Salada', value: 15, color: '#10b981' },
-    { name: 'Bebidas', value: 10, color: '#8b5cf6' },
-  ];
-
   const handleSettingsClick = () => {
     setActiveTab('settings');
   };
 
-  const handleLogoutClick = () => {
-    // Redirect to home page
+  const handleLogoutClick = async () => {
+    await signOut();
     window.location.href = '/';
   };
 
@@ -267,7 +210,7 @@ const RestaurantDashboard = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{stats.totalOrders}</div>
-                  <p className="text-xs text-muted-foreground">+12% em relação {getStatsLabel(statsPeriodFilter)} passado</p>
+                  <p className="text-xs text-muted-foreground">Pedidos {getStatsLabel(statsPeriodFilter)}</p>
                 </CardContent>
               </Card>
 
@@ -289,7 +232,7 @@ const RestaurantDashboard = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-green-600">{stats.deliveredOrders}</div>
-                  <p className="text-xs text-muted-foreground">+15% em relação {getStatsLabel(statsPeriodFilter)} passado</p>
+                  <p className="text-xs text-muted-foreground">Entregues {getStatsLabel(statsPeriodFilter)}</p>
                 </CardContent>
               </Card>
             </div>
@@ -303,7 +246,7 @@ const RestaurantDashboard = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{formatCurrency(stats.totalRevenue)}</div>
-                  <p className="text-xs text-muted-foreground">+8% em relação {getStatsLabel(statsPeriodFilter)} passado</p>
+                  <p className="text-xs text-muted-foreground">Faturamento {getStatsLabel(statsPeriodFilter)}</p>
                 </CardContent>
               </Card>
 
@@ -314,7 +257,7 @@ const RestaurantDashboard = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{formatCurrency(stats.avgOrderValue)}</div>
-                  <p className="text-xs text-muted-foreground">+3% em relação {getStatsLabel(statsPeriodFilter)} passado</p>
+                  <p className="text-xs text-muted-foreground">Valor médio por pedido</p>
                 </CardContent>
               </Card>
 
@@ -358,13 +301,13 @@ const RestaurantDashboard = () => {
                     <div key={order.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
                       <div className="flex-1">
                         <div className="flex items-center space-x-3">
-                          <span className="font-medium">{order.id}</span>
+                          <span className="font-medium">{order.displayId}</span>
                           <Badge className={getStatusColor(order.status)}>
                             {getStatusText(order.status)}
                           </Badge>
                         </div>
                         <p className="text-sm text-gray-600 mt-1">{order.customer}</p>
-                        <p className="text-sm text-gray-500">{order.items}</p>
+                        <p className="text-sm text-gray-500">{order.subtitle}</p>
                       </div>
                       <div className="flex items-center space-x-4">
                         <div className="text-right">
@@ -394,25 +337,31 @@ const RestaurantDashboard = () => {
                   <CardTitle>Produtos Mais Vendidos</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie
-                        data={productData}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        outerRadius={80}
-                        fill="#8884d8"
-                        dataKey="value"
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                      >
-                        {productData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  {productData.length === 0 ? (
+                    <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
+                      Sem dados de produtos no período
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={productData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          outerRadius={80}
+                          fill="#8884d8"
+                          dataKey="value"
+                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        >
+                          {productData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
                 </CardContent>
               </Card>
 
@@ -458,7 +407,10 @@ const RestaurantDashboard = () => {
                       <SelectItem value="cancelled">Cancelados</SelectItem>
                     </SelectContent>
                   </Select>
-                  <OrderExport orders={detailedOrders} />
+                  <OrderExport
+                    onExportPdf={() => exportOrders('pdf')}
+                    onExportCsv={(period) => exportOrders('csv', { period: Number(period) })}
+                  />
                 </div>
               </CardHeader>
               <CardContent>
@@ -467,13 +419,13 @@ const RestaurantDashboard = () => {
                     <div key={order.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
                       <div className="flex-1">
                         <div className="flex items-center space-x-3">
-                          <span className="font-medium">{order.id}</span>
+                          <span className="font-medium">{order.displayId}</span>
                           <Badge className={getStatusColor(order.status)}>
                             {getStatusText(order.status)}
                           </Badge>
                         </div>
                         <p className="text-sm text-gray-600 mt-1">{order.customer}</p>
-                        <p className="text-sm text-gray-500">{order.items}</p>
+                        <p className="text-sm text-gray-500">{order.subtitle}</p>
                       </div>
                       <div className="flex items-center space-x-4">
                         <div className="text-right">

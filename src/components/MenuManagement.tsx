@@ -5,103 +5,28 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Edit, Trash2 } from "lucide-react";
+import { Plus, Edit, Trash2, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/utils/currency";
-
-interface Product {
-  id: string;
-  name: string;
-  size: string;
-  description: string;
-  price: number;
-  image: string;
-  category: 'menu' | 'bebidas' | 'sobremesas';
-}
+import { useProducts, type Product, type ProductCategory } from "@/hooks/useProducts";
 
 const MenuManagement = () => {
+  const { products, loading, createProduct, updateProduct, removeProduct, uploadImage } = useProducts();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     size: "",
     description: "",
     price: "",
     image: "",
-    category: "menu" as 'menu' | 'bebidas' | 'sobremesas'
+    category: "menu" as ProductCategory,
   });
-
-  // Produtos de exemplo por categoria
-  const [products, setProducts] = useState<Product[]>([
-    // Menu (Pizzas)
-    {
-      id: "1",
-      name: "Pizza Margherita",
-      size: "G",
-      description: "Molho de tomate, mussarela, manjericão fresco",
-      price: 35.90,
-      image: "/placeholder.svg",
-      category: "menu"
-    },
-    {
-      id: "2",
-      name: "Pizza Calabresa",
-      size: "M",
-      description: "Molho de tomate, mussarela, calabresa, cebola",
-      price: 32.90,
-      image: "/placeholder.svg",
-      category: "menu"
-    },
-    {
-      id: "3",
-      name: "Pizza Portuguesa",
-      size: "G",
-      description: "Molho de tomate, mussarela, presunto, ovos, cebola, azeitona",
-      price: 42.90,
-      image: "/placeholder.svg",
-      category: "menu"
-    },
-    // Bebidas
-    {
-      id: "4",
-      name: "Coca-Cola",
-      size: "350ml",
-      description: "Refrigerante gelado",
-      price: 5.50,
-      image: "/placeholder.svg",
-      category: "bebidas"
-    },
-    {
-      id: "5",
-      name: "Suco de Laranja",
-      size: "300ml",
-      description: "Suco natural de laranja",
-      price: 7.90,
-      image: "/placeholder.svg",
-      category: "bebidas"
-    },
-    // Sobremesas
-    {
-      id: "6",
-      name: "Pudim de Leite",
-      size: "Fatia",
-      description: "Pudim de leite condensado com calda de caramelo",
-      price: 8.50,
-      image: "/placeholder.svg",
-      category: "sobremesas"
-    },
-    {
-      id: "7",
-      name: "Brownie",
-      size: "Unidade",
-      description: "Brownie de chocolate com nozes",
-      price: 12.90,
-      image: "/placeholder.svg",
-      category: "sobremesas"
-    }
-  ]);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -110,105 +35,149 @@ const MenuManagement = () => {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setPendingImage(file);
       const imageUrl = URL.createObjectURL(file);
       setFormData(prev => ({ ...prev, image: imageUrl }));
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formData.name || !formData.price) return;
 
-    const newProduct: Product = {
-      id: editingProduct ? editingProduct.id : Date.now().toString(),
-      name: formData.name,
-      size: formData.size,
-      description: formData.description,
-      price: parseFloat(formData.price),
-      image: formData.image || "/placeholder.svg",
-      category: formData.category
-    };
+    setSubmitting(true);
+    try {
+      // UI decimal BRL → API integer cents.
+      const priceCents = Math.round(parseFloat(formData.price) * 100);
+      const payload = {
+        name: formData.name,
+        description: formData.description || null,
+        price: priceCents,
+        category: formData.category,
+        size: formData.size || null,
+      };
 
-    if (editingProduct) {
-      setProducts(prev => prev.map(p => p.id === editingProduct.id ? newProduct : p));
-    } else {
-      setProducts(prev => [...prev, newProduct]);
+      let savedId: string | null = null;
+      if (editingProduct) {
+        const updated = await updateProduct(editingProduct.id, payload);
+        savedId = updated?.id ?? null;
+      } else {
+        const created = await createProduct({ ...payload, is_available: true });
+        savedId = created?.id ?? null;
+      }
+
+      if (savedId && pendingImage) {
+        await uploadImage(savedId, pendingImage);
+      }
+
+      if (savedId) {
+        resetForm();
+      }
+    } finally {
+      setSubmitting(false);
     }
-
-    resetForm();
   };
 
   const resetForm = () => {
     setFormData({ name: "", size: "", description: "", price: "", image: "", category: "menu" });
     setEditingProduct(null);
+    setPendingImage(null);
     setIsAddModalOpen(false);
   };
 
   const handleEdit = (product: Product) => {
     setEditingProduct(product);
+    setPendingImage(null);
     setFormData({
       name: product.name,
-      size: product.size,
-      description: product.description,
-      price: product.price.toString(),
-      image: product.image,
-      category: product.category
+      size: product.size ?? "",
+      description: product.description ?? "",
+      // API integer cents → UI decimal BRL.
+      price: (product.price / 100).toString(),
+      image: product.image_url ?? "",
+      category: (product.category as ProductCategory) ?? "menu",
     });
     setIsAddModalOpen(true);
   };
 
   const handleDelete = (productId: string) => {
-    setProducts(prev => prev.filter(p => p.id !== productId));
+    void removeProduct(productId);
   };
 
-  const getProductsByCategory = (category: 'menu' | 'bebidas' | 'sobremesas') => {
+  const handleToggleAvailability = (product: Product) => {
+    void updateProduct(product.id, { is_available: !product.is_available });
+  };
+
+  const getProductsByCategory = (category: ProductCategory) => {
     return products.filter(product => product.category === category);
   };
 
-  const ProductGrid = ({ categoryProducts }: { categoryProducts: Product[] }) => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {categoryProducts.map((product) => (
-        <div key={product.id} className="border rounded-lg p-4 space-y-4">
-          <div className="aspect-square w-full bg-gray-100 rounded-lg overflow-hidden">
-            <img
-              src={product.image}
-              alt={product.name}
-              className="w-full h-full object-cover"
-            />
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-lg">{product.name}</h3>
-              <span className="text-sm bg-gray-100 px-2 py-1 rounded">{product.size}</span>
+  const ProductGrid = ({ categoryProducts }: { categoryProducts: Product[] }) => {
+    if (categoryProducts.length === 0) {
+      return (
+        <div className="text-center py-12 text-gray-500">
+          Nenhum produto cadastrado nesta categoria.
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {categoryProducts.map((product) => (
+          <div key={product.id} className="border rounded-lg p-4 space-y-4">
+            <div className="aspect-square w-full bg-gray-100 rounded-lg overflow-hidden">
+              <img
+                src={product.image_url || "/placeholder.svg"}
+                alt={product.name}
+                className="w-full h-full object-cover"
+              />
             </div>
-            <p className="text-sm text-gray-600 line-clamp-2">{product.description}</p>
-            <div className="flex items-center justify-between">
-              <span className="text-xl font-bold text-orange-600">
-                {formatCurrency(product.price)}
-              </span>
-              <div className="flex space-x-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleEdit(product)}
-                  className="flex items-center space-x-1"
-                >
-                  <Edit className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleDelete(product.id)}
-                  className="flex items-center space-x-1 text-red-600 hover:text-red-700"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-lg">{product.name}</h3>
+                {product.size && (
+                  <span className="text-sm bg-gray-100 px-2 py-1 rounded">{product.size}</span>
+                )}
+              </div>
+              <p className="text-sm text-gray-600 line-clamp-2">{product.description}</p>
+              <div className="flex items-center justify-between">
+                <span className="text-xl font-bold text-orange-600">
+                  {/* API integer cents → reais for display. */}
+                  {formatCurrency(product.price / 100)}
+                </span>
+                <div className="flex space-x-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleEdit(product)}
+                    className="flex items-center space-x-1"
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleDelete(product.id)}
+                    className="flex items-center space-x-1 text-red-600 hover:text-red-700"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <div className="flex items-center justify-between pt-2">
+                <span className="text-sm text-gray-600">
+                  {product.is_available ? "Disponível" : "Indisponível"}
+                </span>
+                <Switch
+                  checked={product.is_available}
+                  onCheckedChange={() => handleToggleAvailability(product)}
+                />
               </div>
             </div>
           </div>
-        </div>
-      ))}
-    </div>
-  );
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -304,8 +273,12 @@ const MenuManagement = () => {
                   </div>
 
                   <div className="flex space-x-2 pt-4">
-                    <Button onClick={handleSubmit} className="flex-1 bg-orange-600 hover:bg-orange-700">
-                      {editingProduct ? "Salvar Alterações" : "Adicionar Produto"}
+                    <Button onClick={handleSubmit} disabled={submitting} className="flex-1 bg-orange-600 hover:bg-orange-700">
+                      {submitting
+                        ? "Salvando..."
+                        : editingProduct
+                          ? "Salvar Alterações"
+                          : "Adicionar Produto"}
                     </Button>
                     <Button variant="outline" onClick={resetForm} className="flex-1">
                       Cancelar
@@ -317,25 +290,32 @@ const MenuManagement = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="menu" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="menu">Menu</TabsTrigger>
-              <TabsTrigger value="bebidas">Bebidas</TabsTrigger>
-              <TabsTrigger value="sobremesas">Sobremesas</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="menu" className="mt-6">
-              <ProductGrid categoryProducts={getProductsByCategory('menu')} />
-            </TabsContent>
-            
-            <TabsContent value="bebidas" className="mt-6">
-              <ProductGrid categoryProducts={getProductsByCategory('bebidas')} />
-            </TabsContent>
-            
-            <TabsContent value="sobremesas" className="mt-6">
-              <ProductGrid categoryProducts={getProductsByCategory('sobremesas')} />
-            </TabsContent>
-          </Tabs>
+          {loading ? (
+            <div className="flex items-center justify-center py-12 text-gray-500">
+              <Loader2 className="h-6 w-6 animate-spin mr-2" />
+              Carregando cardápio...
+            </div>
+          ) : (
+            <Tabs defaultValue="menu" className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="menu">Menu</TabsTrigger>
+                <TabsTrigger value="bebidas">Bebidas</TabsTrigger>
+                <TabsTrigger value="sobremesas">Sobremesas</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="menu" className="mt-6">
+                <ProductGrid categoryProducts={getProductsByCategory('menu')} />
+              </TabsContent>
+
+              <TabsContent value="bebidas" className="mt-6">
+                <ProductGrid categoryProducts={getProductsByCategory('bebidas')} />
+              </TabsContent>
+
+              <TabsContent value="sobremesas" className="mt-6">
+                <ProductGrid categoryProducts={getProductsByCategory('sobremesas')} />
+              </TabsContent>
+            </Tabs>
+          )}
         </CardContent>
       </Card>
     </div>

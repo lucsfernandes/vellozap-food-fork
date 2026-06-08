@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ShoppingCart, User, Bell, Settings, LogOut } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useAuth } from "@/hooks/useAuth";
+
+interface NotificationItem {
+  id: string;
+  message: string;
+  time: string;
+  type: string;
+}
 
 interface HeaderProps {
   cartItemsCount?: number;
@@ -30,15 +38,11 @@ const Header = ({
   onSettingsClick,
   onLogoutClick
 }: HeaderProps) => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const { user, signOut } = useAuth();
+  const isLoggedIn = !!user;
 
-  // Mock notifications data
-  const notifications = [
-    { id: 1, message: "Pedido #1234 entregue com sucesso.", time: "2 min atrás", type: "success" },
-    { id: 2, message: "Hoje batemos o recorde de vendas!", time: "1 hora atrás", type: "celebration" },
-    { id: 3, message: "Atenção: dia de pagamento do colaborador João.", time: "3 horas atrás", type: "warning" },
-    { id: 4, message: "Faltam 2 dias para o vencimento da assinatura.", time: "1 dia atrás", type: "alert" }
-  ];
+  // TODO: integrar com endpoint de notificações quando existir
+  const notifications: NotificationItem[] = [];
 
   const unreadCount = notifications.length;
 
@@ -86,14 +90,20 @@ const Header = ({
                       <h3 className="font-semibold text-sm">Notificações</h3>
                     </div>
                     <div className="max-h-80 overflow-y-auto">
-                      {notifications.map((notification) => (
-                        <DropdownMenuItem key={notification.id} className="p-4 border-b last:border-b-0">
-                          <div className="w-full">
-                            <p className="text-sm text-gray-800 mb-1">{notification.message}</p>
-                            <p className="text-xs text-gray-500">{notification.time}</p>
-                          </div>
-                        </DropdownMenuItem>
-                      ))}
+                      {notifications.length === 0 ? (
+                        <div className="p-6 text-center text-sm text-gray-500">
+                          Nenhuma notificação no momento
+                        </div>
+                      ) : (
+                        notifications.map((notification) => (
+                          <DropdownMenuItem key={notification.id} className="p-4 border-b last:border-b-0">
+                            <div className="w-full">
+                              <p className="text-sm text-gray-800 mb-1">{notification.message}</p>
+                              <p className="text-xs text-gray-500">{notification.time}</p>
+                            </div>
+                          </DropdownMenuItem>
+                        ))
+                      )}
                     </div>
                     <div className="p-4 border-t">
                       <Button variant="outline" size="sm" className="w-full">
@@ -141,18 +151,18 @@ const Header = ({
                 <DropdownMenuContent align="end" className="bg-white">
                   {!isLoggedIn ? (
                     <>
-                      <DropdownMenuItem onClick={() => setIsLoggedIn(true)}>
-                        Sou Cliente
+                      <DropdownMenuItem asChild>
+                        <Link to="/auth">Sou Cliente</Link>
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setIsLoggedIn(true)}>
-                        Sou Restaurante
+                      <DropdownMenuItem asChild>
+                        <Link to="/auth">Sou Restaurante</Link>
                       </DropdownMenuItem>
                     </>
                   ) : (
                     <>
                       <DropdownMenuItem>Meu Perfil</DropdownMenuItem>
                       <DropdownMenuItem>Meus Pedidos</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setIsLoggedIn(false)}>
+                      <DropdownMenuItem onClick={() => { void signOut(); }}>
                         Sair
                       </DropdownMenuItem>
                     </>
