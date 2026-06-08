@@ -24,8 +24,7 @@ const LandingPage = () => {
 
   const handleDemoSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // For now, just show a success message. In production, this would save to backend
-    console.log("Demo request:", demoForm);
+    // TODO: integrar com endpoint de captação de leads quando existir
     toast({
       title: "Solicitação enviada!",
       description: "Entraremos em contato em breve para agendar sua demonstração.",

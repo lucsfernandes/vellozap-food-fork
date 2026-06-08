@@ -20,70 +20,15 @@ interface Order {
 }
 
 const PaymentFlow = () => {
-  const [orders, setOrders] = useState<Order[]>([
-    {
-      id: "1",
-      customerName: "João Silva",
-      customerPhone: "(11) 99999-1234",
-      items: [
-        { name: "Pizza Margherita Grande", quantity: 1, price: 35.90 }
-      ],
-      totalAmount: 35.90,
-      paymentStatus: 'pending',
-      paymentLink: "https://sandbox.asaas.com/c/12345678",
-      createdAt: "2024-01-15 14:30"
-    },
-    {
-      id: "2", 
-      customerName: "Maria Santos",
-      customerPhone: "(11) 99999-5678",
-      items: [
-        { name: "Pizza Portuguesa Média", quantity: 1, price: 32.90 }
-      ],
-      totalAmount: 32.90,
-      paymentStatus: 'paid',
-      paymentMethod: 'PIX',
-      paymentLink: "https://sandbox.asaas.com/c/87654321",
-      createdAt: "2024-01-15 13:45"
-    }
-  ]);
+  // TODO: integrar geração de cobrança ASAAS quando o endpoint existir
+  // Não há endpoint de cobranças/ASAAS no backend ainda; as cobranças derivam
+  // de pedidos (orders), que pertencem a outra parte da migração. Até lá,
+  // exibimos um estado vazio em vez de dados fabricados.
+  const [orders] = useState<Order[]>([]);
 
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const { toast } = useToast();
-
-  const generatePaymentLink = (orderId: string) => {
-    // Simular geração de link de pagamento
-    const order = orders.find(o => o.id === orderId);
-    if (!order) return;
-
-    const mockPaymentLink = `https://sandbox.asaas.com/c/${Math.random().toString(36).substr(2, 8)}`;
-    
-    setOrders(orders.map(o => 
-      o.id === orderId 
-        ? { ...o, paymentLink: mockPaymentLink }
-        : o
-    ));
-
-    toast({
-      title: "Link de pagamento gerado",
-      description: "O link foi criado e pode ser enviado via WhatsApp.",
-    });
-  };
-
-  const simulatePaymentReceived = (orderId: string) => {
-    // Simular recebimento de webhook do ASAAS
-    setOrders(orders.map(o => 
-      o.id === orderId 
-        ? { ...o, paymentStatus: 'paid' as const, paymentMethod: 'PIX' }
-        : o
-    ));
-
-    toast({
-      title: "Pagamento recebido!",
-      description: "O webhook do ASAAS confirmou o pagamento.",
-    });
-  };
 
   const copyPaymentLink = (link: string) => {
     navigator.clipboard.writeText(link);
@@ -132,58 +77,58 @@ const PaymentFlow = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {orders.map((order) => (
-              <div key={order.id} className="p-4 border rounded-lg space-y-3">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h4 className="font-medium">{order.customerName}</h4>
-                    <p className="text-sm text-gray-500">{order.customerPhone}</p>
-                    <p className="text-sm text-gray-500">{order.createdAt}</p>
+          {orders.length === 0 ? (
+            <div className="text-center py-8">
+              <CreditCard className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium mb-2">Sem cobranças pendentes</h3>
+              <p className="text-muted-foreground">
+                As cobranças aparecerão aqui assim que a geração de pagamento via ASAAS estiver disponível.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {orders.map((order) => (
+                <div key={order.id} className="p-4 border rounded-lg space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="font-medium">{order.customerName}</h4>
+                      <p className="text-sm text-gray-500">{order.customerPhone}</p>
+                      <p className="text-sm text-gray-500">{order.createdAt}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium">R$ {order.totalAmount.toFixed(2)}</p>
+                      {getStatusBadge(order.paymentStatus)}
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-medium">R$ {order.totalAmount.toFixed(2)}</p>
-                    {getStatusBadge(order.paymentStatus)}
+
+                  <div className="text-sm">
+                    <strong>Itens:</strong>
+                    <ul className="list-disc list-inside ml-2">
+                      {order.items.map((item, idx) => (
+                        <li key={idx}>{item.name} ({item.quantity}x) - R$ {item.price.toFixed(2)}</li>
+                      ))}
+                    </ul>
                   </div>
-                </div>
 
-                <div className="text-sm">
-                  <strong>Itens:</strong>
-                  <ul className="list-disc list-inside ml-2">
-                    {order.items.map((item, idx) => (
-                      <li key={idx}>{item.name} ({item.quantity}x) - R$ {item.price.toFixed(2)}</li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="flex space-x-2">
-                  {!order.paymentLink ? (
-                    <Button 
-                      size="sm" 
-                      onClick={() => generatePaymentLink(order.id)}
-                      className="bg-orange-600 hover:bg-orange-700"
-                    >
-                      Gerar Link de Pagamento
-                    </Button>
-                  ) : (
-                    <>
-                      <Button 
-                        size="sm" 
+                  {order.paymentLink && (
+                    <div className="flex space-x-2">
+                      <Button
+                        size="sm"
                         variant="outline"
                         onClick={() => copyPaymentLink(order.paymentLink!)}
                       >
                         <Copy className="h-4 w-4 mr-2" />
                         Copiar Link
                       </Button>
-                      <Button 
+                      <Button
                         size="sm"
                         onClick={() => sendWhatsAppLink(order)}
                         className="bg-green-600 hover:bg-green-700"
                       >
                         Enviar via WhatsApp
                       </Button>
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         variant="outline"
                         onClick={() => {
                           setSelectedOrder(order);
@@ -193,30 +138,18 @@ const PaymentFlow = () => {
                         <ExternalLink className="h-4 w-4 mr-2" />
                         Ver Detalhes
                       </Button>
-                    </>
+                    </div>
                   )}
-                  
-                  {order.paymentStatus === 'pending' && order.paymentLink && (
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => simulatePaymentReceived(order.id)}
-                      className="border-green-600 text-green-600 hover:bg-green-50"
-                    >
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                      Simular Pagamento
-                    </Button>
+
+                  {order.paymentLink && (
+                    <div className="p-2 bg-gray-50 rounded text-xs">
+                      <strong>Link:</strong> <span className="font-mono">{order.paymentLink}</span>
+                    </div>
                   )}
                 </div>
-
-                {order.paymentLink && (
-                  <div className="p-2 bg-gray-50 rounded text-xs">
-                    <strong>Link:</strong> <span className="font-mono">{order.paymentLink}</span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 

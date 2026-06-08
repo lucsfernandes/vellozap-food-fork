@@ -1,6 +1,5 @@
-
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useState, useEffect, useCallback } from 'react';
+import { apiClient } from '@/lib/apiClient';
 import { useAuth } from './useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -27,62 +26,46 @@ export const useRestaurantProfile = () => {
   const { user } = useAuth();
   const { toast } = useToast();
 
-  useEffect(() => {
-    if (user) {
-      fetchProfile();
-    }
-  }, [user]);
-
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('restaurant_profiles')
-        .select('*')
-        .eq('user_id', user?.id)
-        .single();
-
-      if (error) {
-        console.error('Error fetching profile:', error);
-        toast({
-          title: "Erro ao carregar perfil",
-          description: "Não foi possível carregar as informações do restaurante.",
-          variant: "destructive",
-        });
-      } else {
-        setProfile(data);
-      }
+      const res = await apiClient.get<RestaurantProfile>('/restaurant/me');
+      setProfile(res.data);
     } catch (error) {
       console.error('Error fetching profile:', error);
+      toast({
+        title: 'Erro ao carregar perfil',
+        description: 'Não foi possível carregar as informações do restaurante.',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
 
-  const updateProfile = async (updates: Partial<RestaurantProfile>) => {
+  useEffect(() => {
+    if (user) {
+      void fetchProfile();
+    } else {
+      setLoading(false);
+    }
+  }, [user, fetchProfile]);
+
+  const updateProfile = async (updates: Partial<RestaurantProfile>): Promise<boolean> => {
     try {
-      const { error } = await supabase
-        .from('restaurant_profiles')
-        .update(updates)
-        .eq('user_id', user?.id);
-
-      if (error) {
-        console.error('Error updating profile:', error);
-        toast({
-          title: "Erro ao atualizar",
-          description: "Não foi possível atualizar as informações.",
-          variant: "destructive",
-        });
-        return false;
-      } else {
-        await fetchProfile(); // Recarregar os dados
-        toast({
-          title: "Perfil atualizado",
-          description: "As informações foram salvas com sucesso.",
-        });
-        return true;
-      }
+      const res = await apiClient.patch<RestaurantProfile>('/restaurant/me', updates);
+      setProfile(res.data);
+      toast({
+        title: 'Perfil atualizado',
+        description: 'As informações foram salvas com sucesso.',
+      });
+      return true;
     } catch (error) {
       console.error('Error updating profile:', error);
+      toast({
+        title: 'Erro ao atualizar',
+        description: 'Não foi possível atualizar as informações.',
+        variant: 'destructive',
+      });
       return false;
     }
   };

@@ -9,6 +9,8 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
+import axios from "axios";
 
 const AuthPage = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -17,43 +19,56 @@ const AuthPage = () => {
   const [restaurantName, setRestaurantName] = useState("");
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { signIn, signUp } = useAuth();
+
+  const describeError = (error: unknown, fallback: string): string => {
+    if (axios.isAxiosError(error)) {
+      const data = error.response?.data as { error?: { message?: string } } | undefined;
+      return data?.error?.message ?? fallback;
+    }
+    return fallback;
+  };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-
-    // Simulação de cadastro sem Supabase
-    setTimeout(() => {
+    try {
+      await signUp(email, password, restaurantName);
       toast({
         title: "Cadastro realizado!",
         description: "Bem-vindo ao VelloZap! Redirecionando para o dashboard...",
       });
-      
-      setTimeout(() => {
-        navigate("/dashboard");
-      }, 1000);
-      
+      navigate("/dashboard");
+    } catch (error) {
+      toast({
+        title: "Erro ao cadastrar",
+        description: describeError(error, "Não foi possível criar a conta."),
+        variant: "destructive",
+      });
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-
-    // Simulação de login sem Supabase
-    setTimeout(() => {
+    try {
+      await signIn(email, password);
       toast({
         title: "Login realizado!",
         description: "Bem-vindo de volta ao VelloZap!",
       });
-      
-      setTimeout(() => {
-        navigate("/dashboard");
-      }, 1000);
-      
+      navigate("/dashboard");
+    } catch (error) {
+      toast({
+        title: "Erro ao entrar",
+        description: describeError(error, "Email ou senha inválidos."),
+        variant: "destructive",
+      });
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   const handlePasswordReset = async () => {

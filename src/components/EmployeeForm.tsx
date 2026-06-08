@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { apiClient } from '@/lib/apiClient';
 import { useRestaurantProfile } from '@/hooks/useRestaurantProfile';
 
 interface Employee {
@@ -70,7 +70,8 @@ const EmployeeForm = ({ isOpen, onClose, employee, onSave }: EmployeeFormProps) 
         phone: employee.phone || '',
         role: employee.role || '',
         payment_type: employee.payment_type || '',
-        payment_value: employee.payment_value || 0,
+        // API integer cents → UI decimal BRL.
+        payment_value: employee.payment_value ? employee.payment_value / 100 : 0,
         pix_key: employee.pix_key || '',
         bank_name: employee.bank_name || '',
         agency: employee.agency || '',
@@ -106,44 +107,23 @@ const EmployeeForm = ({ isOpen, onClose, employee, onSave }: EmployeeFormProps) 
 
     setLoading(true);
     try {
+      const payload = {
+        name: formData.name,
+        email: formData.email || null,
+        phone: formData.phone || null,
+        role: formData.role,
+        payment_type: formData.payment_type || null,
+        // UI decimal BRL → API integer cents.
+        payment_value: formData.payment_value ? Math.round(formData.payment_value * 100) : null,
+        pix_key: formData.pix_key || null,
+        bank_name: formData.bank_name || null,
+        agency: formData.agency || null,
+        account: formData.account || null,
+      };
       if (employee?.id) {
-        // Update existing employee
-        const { error } = await supabase
-          .from('employees')
-          .update({
-            name: formData.name,
-            email: formData.email || null,
-            phone: formData.phone || null,
-            role: formData.role,
-            payment_type: formData.payment_type,
-            payment_value: formData.payment_value,
-            pix_key: formData.pix_key,
-            bank_name: formData.bank_name || null,
-            agency: formData.agency || null,
-            account: formData.account || null
-          })
-          .eq('id', employee.id);
-
-        if (error) throw error;
+        await apiClient.patch(`/employees/${employee.id}`, payload);
       } else {
-        // Create new employee
-        const { error } = await supabase
-          .from('employees')
-          .insert({
-            restaurant_id: profile.id,
-            name: formData.name,
-            email: formData.email || null,
-            phone: formData.phone || null,
-            role: formData.role,
-            payment_type: formData.payment_type,
-            payment_value: formData.payment_value,
-            pix_key: formData.pix_key,
-            bank_name: formData.bank_name || null,
-            agency: formData.agency || null,
-            account: formData.account || null
-          });
-
-        if (error) throw error;
+        await apiClient.post('/employees', payload);
       }
 
       toast({

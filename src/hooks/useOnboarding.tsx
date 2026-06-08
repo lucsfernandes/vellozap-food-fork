@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { apiClient } from '@/lib/apiClient';
 import { useAuth } from './useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -71,18 +71,12 @@ export const useOnboarding = () => {
 
   const loadOnboardingProgress = async () => {
     try {
-      const { data, error } = await supabase
-        .from('onboarding_progress')
-        .select('*')
-        .eq('user_id', user?.id);
-
-      if (error) {
-        console.error('Error loading onboarding progress:', error);
-        return;
-      }
+      const { data } = await apiClient.get<{
+        steps: Array<{ step_name: string; completed: boolean; completed_at: string | null }>;
+      }>('/onboarding/progress');
 
       const updatedSteps = steps.map(step => {
-        const progress = data?.find(p => p.step_name === step.name);
+        const progress = data.steps.find(p => p.step_name === step.name);
         return {
           ...step,
           completed: progress?.completed || false
@@ -107,21 +101,9 @@ export const useOnboarding = () => {
 
   const markStepComplete = async (stepName: string) => {
     try {
-      const { error } = await supabase
-        .from('onboarding_progress')
-        .upsert({
-          user_id: user?.id,
-          step_name: stepName,
-          completed: true,
-          completed_at: new Date().toISOString()
-        });
+      await apiClient.post(`/onboarding/progress/${stepName}/complete`, {});
 
-      if (error) {
-        console.error('Error marking step complete:', error);
-        return false;
-      }
-
-      setSteps(prev => prev.map(step => 
+      setSteps(prev => prev.map(step =>
         step.name === stepName ? { ...step, completed: true } : step
       ));
 
@@ -134,15 +116,7 @@ export const useOnboarding = () => {
 
   const completeOnboarding = async () => {
     try {
-      const { error } = await supabase
-        .from('restaurant_profiles')
-        .update({ onboarding_completed: true })
-        .eq('user_id', user?.id);
-
-      if (error) {
-        console.error('Error completing onboarding:', error);
-        return false;
-      }
+      await apiClient.post('/onboarding/complete', {});
 
       toast({
         title: "Onboarding concluído!",

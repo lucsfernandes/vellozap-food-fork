@@ -2,36 +2,21 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/utils/currency";
-
-interface OrderItem {
-  name: string;
-  quantity: number;
-  unitPrice: number;
-  total: number;
-}
-
-interface Order {
-  id: string;
-  customer: string;
-  phone: string;
-  address: string;
-  items: OrderItem[];
-  value: number;
-  status: string;
-  time: string;
-  paymentMethod: string;
-  paymentStatus: string;
-  notes?: string;
-}
+import type { OrderDetailed } from "@/hooks/useOrders";
 
 interface OrderDetailsModalProps {
-  order: Order | null;
+  order: OrderDetailed | null;
   isOpen: boolean;
   onClose: () => void;
 }
 
+const formatTime = (iso: string) =>
+  new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
 const OrderDetailsModal = ({ order, isOpen, onClose }: OrderDetailsModalProps) => {
   if (!order) return null;
+
+  const shortId = `#${order.id.slice(0, 8)}`;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -59,7 +44,7 @@ const OrderDetailsModal = ({ order, isOpen, onClose }: OrderDetailsModalProps) =
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Detalhes do Pedido {order.id}</DialogTitle>
+          <DialogTitle>Detalhes do Pedido {shortId}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6">
@@ -77,15 +62,15 @@ const OrderDetailsModal = ({ order, isOpen, onClose }: OrderDetailsModalProps) =
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <span className="text-sm font-medium text-gray-500">Nome:</span>
-                <p>{order.customer}</p>
+                <p>{order.customer_name}</p>
               </div>
               <div>
                 <span className="text-sm font-medium text-gray-500">Telefone:</span>
-                <p>{order.phone}</p>
+                <p>{order.customer_phone}</p>
               </div>
               <div className="md:col-span-2">
                 <span className="text-sm font-medium text-gray-500">Endereço:</span>
-                <p>{order.address}</p>
+                <p>{order.customer_address ?? '—'}</p>
               </div>
             </div>
           </div>
@@ -94,20 +79,20 @@ const OrderDetailsModal = ({ order, isOpen, onClose }: OrderDetailsModalProps) =
           <div className="border rounded-lg p-4">
             <h3 className="font-semibold mb-3">Itens do Pedido</h3>
             <div className="space-y-2">
-              {order.items.map((item, index) => (
-                <div key={index} className="flex justify-between items-center py-2 border-b last:border-b-0">
+              {order.items.map((item) => (
+                <div key={item.id} className="flex justify-between items-center py-2 border-b last:border-b-0">
                   <div>
-                    <span className="font-medium">{item.quantity}x {item.name}</span>
-                    <p className="text-sm text-gray-500">{formatCurrency(item.unitPrice)} cada</p>
+                    <span className="font-medium">{item.quantity}x {item.product_name ?? 'Produto'}</span>
+                    <p className="text-sm text-gray-500">{formatCurrency(item.unit_price / 100)} cada</p>
                   </div>
-                  <span className="font-medium">{formatCurrency(item.total)}</span>
+                  <span className="font-medium">{formatCurrency(item.total_price / 100)}</span>
                 </div>
               ))}
             </div>
             <div className="mt-4 pt-4 border-t">
               <div className="flex justify-between items-center">
                 <span className="text-lg font-semibold">Total:</span>
-                <span className="text-lg font-semibold">{formatCurrency(order.value)}</span>
+                <span className="text-lg font-semibold">{formatCurrency(order.total_amount / 100)}</span>
               </div>
             </div>
           </div>
@@ -118,11 +103,11 @@ const OrderDetailsModal = ({ order, isOpen, onClose }: OrderDetailsModalProps) =
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <span className="text-sm font-medium text-gray-500">Método:</span>
-                <p>{order.paymentMethod}</p>
+                <p>{order.payment_method ?? '—'}</p>
               </div>
               <div>
                 <span className="text-sm font-medium text-gray-500">Status:</span>
-                <p>{order.paymentStatus}</p>
+                <p>{order.payment_status ?? '—'}</p>
               </div>
             </div>
           </div>
@@ -141,7 +126,7 @@ const OrderDetailsModal = ({ order, isOpen, onClose }: OrderDetailsModalProps) =
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <span className="text-sm font-medium text-gray-500">Horário:</span>
-                <p>{order.time}</p>
+                <p>{formatTime(order.created_at)}</p>
               </div>
               <div>
                 <span className="text-sm font-medium text-gray-500">ID do Pedido:</span>

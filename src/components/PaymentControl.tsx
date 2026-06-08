@@ -8,66 +8,21 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { CalendarIcon, Download, DollarSign, Clock, CheckCircle } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/utils/currency';
-
-interface Employee {
-  id: string;
-  name: string;
-  role: string;
-  payment_type: string;
-  payment_value: number;
-  pix_key: string;
-  bank_name: string;
-  agency: string;
-  account: string;
-}
-
-interface PaymentRecord {
-  id: string;
-  employee: Employee;
-  period_start: string;
-  period_end: string;
-  total_days: number;
-  total_hours: number;
-  total_amount: number;
-  payment_status: string;
-  payment_date: string;
-}
+import { useEmployees } from '@/hooks/useEmployees';
+import { usePayments, type PaymentPeriod } from '@/hooks/usePayments';
 
 const PaymentControl = () => {
-  // Mock data para demonstração
-  const mockEmployees: Employee[] = [
-    {
-      id: '1',
-      name: 'João Silva',
-      role: 'motoboy',
-      payment_type: 'daily',
-      payment_value: 80.00,
-      pix_key: 'joao@exemplo.com',
-      bank_name: 'Banco do Brasil',
-      agency: '1234',
-      account: '56789-0'
-    },
-    {
-      id: '2',
-      name: 'Maria Santos',
-      role: 'atendente',
-      payment_type: 'hourly',
-      payment_value: 15.00,
-      pix_key: '(11) 88888-8888',
-      bank_name: '',
-      agency: '',
-      account: ''
-    }
-  ];
+  const { employees } = useEmployees();
+  const { payments, calculate, markPaid, exportPayments } = usePayments();
 
-  const [payments, setPayments] = useState<PaymentRecord[]>([]);
-  const [selectedPeriod, setSelectedPeriod] = useState('current_month');
+  const [selectedPeriod, setSelectedPeriod] = useState<PaymentPeriod>('current_month');
   const [customStartDate, setCustomStartDate] = useState<Date>();
   const [customEndDate, setCustomEndDate] = useState<Date>();
   const [isCalculating, setIsCalculating] = useState(false);
-  const { toast } = useToast();
+
+  // Only employees with a configured payment type can be paid.
+  const payableEmployees = employees.filter((e) => e.payment_type);
 
   const getPeriodDates = () => {
     const now = new Date();
@@ -78,11 +33,12 @@ const PaymentControl = () => {
         startDate = startOfMonth(now);
         endDate = endOfMonth(now);
         break;
-      case 'last_month':
+      case 'last_month': {
         const lastMonth = subMonths(now, 1);
         startDate = startOfMonth(lastMonth);
         endDate = endOfMonth(lastMonth);
         break;
+      }
       case 'custom':
         if (!customStartDate || !customEndDate) return { startDate: null, endDate: null };
         startDate = customStartDate;
@@ -96,75 +52,31 @@ const PaymentControl = () => {
     return { startDate, endDate };
   };
 
-  const calculatePayments = () => {
+  const calculatePayments = async () => {
     const { startDate, endDate } = getPeriodDates();
     if (!startDate || !endDate) return;
 
     setIsCalculating(true);
-    
-    // Simular cálculo com dados mock
-    setTimeout(() => {
-      const mockPayments: PaymentRecord[] = mockEmployees.map((employee, index) => ({
-        id: `payment-${employee.id}`,
-        employee,
-        period_start: format(startDate, 'yyyy-MM-dd'),
-        period_end: format(endDate, 'yyyy-MM-dd'),
-        total_days: employee.payment_type === 'daily' ? 22 : 0,
-        total_hours: employee.payment_type === 'hourly' ? 176 : 0,
-        total_amount: employee.payment_type === 'daily' ? 22 * employee.payment_value : 
-                     employee.payment_type === 'hourly' ? 176 * employee.payment_value :
-                     employee.payment_value,
-        payment_status: 'pending',
-        payment_date: ''
-      }));
-
-      setPayments(mockPayments);
-      setIsCalculating(false);
-      
-      toast({
-        title: "Cálculos realizados",
-        description: "Pagamentos calculados com sucesso.",
-      });
-    }, 1000);
+    await calculate(
+      selectedPeriod,
+      selectedPeriod === 'custom'
+        ? { from: format(startDate, 'yyyy-MM-dd'), to: format(endDate, 'yyyy-MM-dd') }
+        : undefined,
+    );
+    setIsCalculating(false);
   };
 
   const markAsPaid = (paymentId: string) => {
-    setPayments(payments.map(payment => 
-      payment.id === paymentId 
-        ? { ...payment, payment_status: 'paid', payment_date: new Date().toISOString() }
-        : payment
-    ));
-
-    toast({
-      title: "Pagamento registrado",
-      description: "Pagamento marcado como pago.",
-    });
+    void markPaid(paymentId);
   };
 
   const exportToCSV = () => {
-    const csvContent = [
-      ['Nome', 'Função', 'Forma de Pagamento', 'Total Recebido', 'Chave PIX', 'Banco', 'Agência', 'Conta', 'Status'].join(','),
-      ...payments.map(payment => [
-        payment.employee.name,
-        payment.employee.role,
-        payment.employee.payment_type === 'daily' ? 'Por diária' : 
-        payment.employee.payment_type === 'hourly' ? 'Por hora' : 'Mensal',
-        payment.total_amount.toFixed(2).replace('.', ','),
-        payment.employee.pix_key,
-        payment.employee.bank_name || '',
-        payment.employee.agency || '',
-        payment.employee.account || '',
-        payment.payment_status === 'paid' ? 'Pago' : 'Pendente'
-      ].join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `pagamentos-${format(new Date(), 'yyyy-MM-dd')}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
+    const { startDate, endDate } = getPeriodDates();
+    if (!startDate || !endDate) return;
+    void exportPayments({
+      from: format(startDate, 'yyyy-MM-dd'),
+      to: format(endDate, 'yyyy-MM-dd'),
+    });
   };
 
   const getRoleLabel = (role: string) => {
@@ -253,7 +165,7 @@ const PaymentControl = () => {
 
         <div className="flex justify-between items-center">
           <p className="text-sm text-gray-600">
-            {mockEmployees.length} funcionário(s) cadastrado(s) com informações de pagamento
+            {payableEmployees.length} funcionário(s) cadastrado(s) com informações de pagamento
           </p>
           <Button 
             onClick={calculatePayments} 
@@ -280,19 +192,21 @@ const PaymentControl = () => {
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <div className="flex items-center space-x-3 mb-2">
-                      <h3 className="text-lg font-semibold">{payment.employee.name}</h3>
-                      <Badge variant="outline">
-                        {getRoleLabel(payment.employee.role)}
-                      </Badge>
+                      <h3 className="text-lg font-semibold">{payment.employee?.name ?? 'Funcionário'}</h3>
+                      {payment.employee?.role && (
+                        <Badge variant="outline">
+                          {getRoleLabel(payment.employee.role)}
+                        </Badge>
+                      )}
                       <Badge className={payment.payment_status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
                         {payment.payment_status === 'paid' ? 'Pago' : 'Pendente'}
                       </Badge>
                     </div>
                     <div className="text-sm text-gray-600 space-y-1">
                       <p>📅 Período: {format(new Date(payment.period_start), 'dd/MM/yyyy')} - {format(new Date(payment.period_end), 'dd/MM/yyyy')}</p>
-                      {payment.total_days > 0 && <p>📊 Dias trabalhados: {payment.total_days}</p>}
-                      {payment.total_hours > 0 && <p>⏰ Horas trabalhadas: {payment.total_hours}</p>}
-                      <p>💰 <strong>Total: {formatCurrency(payment.total_amount)}</strong></p>
+                      {payment.total_days != null && payment.total_days > 0 && <p>📊 Dias trabalhados: {payment.total_days}</p>}
+                      {payment.total_hours != null && payment.total_hours > 0 && <p>⏰ Horas trabalhadas: {payment.total_hours}</p>}
+                      <p>💰 <strong>Total: {formatCurrency(payment.total_amount / 100)}</strong></p>
                     </div>
                   </div>
                   <div className="flex flex-col space-y-2">

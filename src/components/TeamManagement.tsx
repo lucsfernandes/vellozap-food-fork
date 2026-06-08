@@ -6,54 +6,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Pencil, Trash2, Plus, Users, Clock, DollarSign } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { formatCurrency } from "@/utils/currency";
+import { useEmployees, type Employee } from "@/hooks/useEmployees";
 import EmployeeForm from "./EmployeeForm";
 import WorkRecordForm from "./WorkRecordForm";
 import PaymentControl from "./PaymentControl";
 
-interface Employee {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  role: string;
-  payment_type: string;
-  payment_value: number;
-  pix_key: string;
-  bank_name: string;
-  agency: string;
-  account: string;
-}
-
 const TeamManagement = () => {
-  // Mock data para demonstração (funcionando sem Supabase por enquanto)
-  const [employees, setEmployees] = useState<Employee[]>([
-    {
-      id: '1',
-      name: 'João Silva',
-      email: 'joao@exemplo.com',
-      phone: '(11) 99999-9999',
-      role: 'motoboy',
-      payment_type: 'daily',
-      payment_value: 80.00,
-      pix_key: 'joao@exemplo.com',
-      bank_name: 'Banco do Brasil',
-      agency: '1234',
-      account: '56789-0'
-    },
-    {
-      id: '2',
-      name: 'Maria Santos',
-      email: 'maria@exemplo.com',
-      phone: '(11) 88888-8888',
-      role: 'atendente',
-      payment_type: 'hourly',
-      payment_value: 15.00,
-      pix_key: '(11) 88888-8888',
-      bank_name: '',
-      agency: '',
-      account: ''
-    }
-  ]);
+  const { employees, loading, refetch, removeEmployee } = useEmployees();
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -102,9 +62,7 @@ const TeamManagement = () => {
     : employees.filter(emp => emp.role === roleFilter);
 
   const handleRefreshEmployees = () => {
-    // This function will be called after saving an employee
-    // For now, it's just a placeholder since we're using mock data
-    console.log('Refreshing employees list');
+    void refetch();
   };
 
   const handleEdit = (employee: Employee) => {
@@ -125,14 +83,15 @@ const TeamManagement = () => {
     setIsWorkRecordOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     const employee = employees.find(emp => emp.id === id);
-    setEmployees(employees.filter(emp => emp.id !== id));
-    
-    toast({
-      title: "Funcionário removido",
-      description: `${employee?.name} foi removido da equipe.`,
-    });
+    const success = await removeEmployee(id);
+    if (success) {
+      toast({
+        title: "Funcionário removido",
+        description: `${employee?.name} foi removido da equipe.`,
+      });
+    }
   };
 
   return (
@@ -176,6 +135,13 @@ const TeamManagement = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {loading && (
+                <div className="p-12 text-center text-gray-500">
+                  Carregando equipe...
+                </div>
+              )}
+              {!loading && (
+              <>
               <div className="grid gap-4">
                 {filteredEmployees.map((employee) => (
                   <div key={employee.id} className="border rounded-lg p-4">
@@ -195,8 +161,8 @@ const TeamManagement = () => {
                         <div className="text-sm text-gray-600 space-y-1">
                           {employee.email && <p>📧 {employee.email}</p>}
                           {employee.phone && <p>📱 {employee.phone}</p>}
-                          {employee.payment_value && (
-                            <p>💰 {getPaymentTypeLabel(employee.payment_type)}: R$ {employee.payment_value.toFixed(2)}</p>
+                          {employee.payment_value != null && employee.payment_type && (
+                            <p>💰 {getPaymentTypeLabel(employee.payment_type)}: {formatCurrency(employee.payment_value / 100)}</p>
                           )}
                         </div>
                       </div>
@@ -237,8 +203,8 @@ const TeamManagement = () => {
                   <Users className="h-12 w-12 mx-auto text-gray-400 mb-4" />
                   <h3 className="text-lg font-medium mb-2">Nenhum funcionário encontrado</h3>
                   <p className="text-gray-600 mb-4">
-                    {roleFilter === "all" 
-                      ? "Adicione funcionários à sua equipe." 
+                    {roleFilter === "all"
+                      ? "Adicione funcionários à sua equipe."
                       : "Não há funcionários com essa função."
                     }
                   </p>
@@ -248,6 +214,8 @@ const TeamManagement = () => {
                     </Button>
                   )}
                 </div>
+              )}
+              </>
               )}
             </CardContent>
           </Card>
@@ -270,7 +238,19 @@ const TeamManagement = () => {
           setIsEditDialogOpen(false);
           setSelectedEmployee(null);
         }}
-        employee={selectedEmployee}
+        employee={selectedEmployee ? {
+          id: selectedEmployee.id,
+          name: selectedEmployee.name,
+          role: selectedEmployee.role,
+          email: selectedEmployee.email ?? '',
+          phone: selectedEmployee.phone ?? '',
+          payment_type: selectedEmployee.payment_type ?? '',
+          payment_value: selectedEmployee.payment_value ?? 0,
+          pix_key: selectedEmployee.pix_key ?? '',
+          bank_name: selectedEmployee.bank_name ?? '',
+          agency: selectedEmployee.agency ?? '',
+          account: selectedEmployee.account ?? '',
+        } : null}
         onSave={handleRefreshEmployees}
       />
 
@@ -281,10 +261,12 @@ const TeamManagement = () => {
             setIsWorkRecordOpen(false);
             setSelectedEmployee(null);
           }}
-          employee={selectedEmployee}
-          onSave={() => {
-            // Optionally refresh some data here
+          employee={{
+            id: selectedEmployee.id,
+            name: selectedEmployee.name,
+            payment_type: selectedEmployee.payment_type ?? '',
           }}
+          onSave={handleRefreshEmployees}
         />
       )}
     </div>

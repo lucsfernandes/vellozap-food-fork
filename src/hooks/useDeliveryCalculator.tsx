@@ -1,5 +1,4 @@
-
-import { useState } from 'react';
+import { apiClient } from '@/lib/apiClient';
 import { useToast } from '@/hooks/use-toast';
 
 export interface DeliveryZone {
@@ -18,56 +17,70 @@ export interface DeliveryCalculationResult {
   message: string;
 }
 
+/** Raw backend shapes: money fields are integer cents. */
+interface DeliveryZoneApi {
+  id: string;
+  minDistance: number;
+  maxDistance: number;
+  price: number;
+  description: string;
+}
+
+interface DeliveryCalculationApi {
+  distance: number;
+  zone: DeliveryZoneApi | null;
+  deliveryFee: number;
+  canDeliver: boolean;
+  message: string;
+}
+
+const zoneFromApi = (z: DeliveryZoneApi): DeliveryZone => ({
+  ...z,
+  price: z.price / 100,
+});
+
 export const useDeliveryCalculator = () => {
   const { toast } = useToast();
 
-  // Simulação de cálculo de distância (substituir por API real em produção)
-  const calculateDistance = async (originCep: string, destinationCep: string): Promise<number> => {
-    try {
-      // Simulação - em produção integrar com:
-      // 1. ViaCEP para obter coordenadas dos CEPs
-      // 2. Google Maps Distance Matrix API ou similar para distância real
-      
-      await new Promise(resolve => setTimeout(resolve, 800)); // Simula delay da API
-      
-      // Mock baseado nos CEPs para demonstração
-      const origin = parseInt(originCep.replace(/\D/g, '').slice(-3));
-      const destination = parseInt(destinationCep.replace(/\D/g, '').slice(-3));
-      const mockDistance = Math.abs(origin - destination) / 50;
-      
-      return Math.round(mockDistance * 100) / 100;
-    } catch (error) {
-      throw new Error('Erro ao calcular distância entre os CEPs');
-    }
-  };
-
   const findZoneForDistance = (distance: number, zones: DeliveryZone[]): DeliveryZone | null => {
-    return zones.find(zone => 
-      distance >= zone.minDistance && distance <= zone.maxDistance
-    ) || null;
+    return zones.find((zone) => distance >= zone.minDistance && distance <= zone.maxDistance) || null;
   };
 
+  /**
+   * Calculates the delivery fee via the backend `/delivery/calculate` endpoint.
+   * Distance and the matching zone are resolved server-side from the owner's
+   * configured zones; the `deliveryZones` arg is no longer used for the
+   * computation but is kept in the signature for backward compatibility.
+   */
   const calculateDeliveryFee = async (
     restaurantCep: string,
     customerCep: string,
-    deliveryZones: DeliveryZone[]
+    _deliveryZones?: DeliveryZone[],
   ): Promise<DeliveryCalculationResult> => {
-    if (!restaurantCep || !customerCep) {
+    if (!customerCep) {
       throw new Error('CEPs são obrigatórios para o cálculo');
     }
 
-    const distance = await calculateDistance(restaurantCep, customerCep);
-    const zone = findZoneForDistance(distance, deliveryZones);
-    
-    return {
-      distance,
-      zone,
-      deliveryFee: zone ? zone.price : 0,
-      canDeliver: zone !== null,
-      message: zone 
-        ? `Entrega disponível - ${zone.description}` 
-        : "Fora da área de entrega"
-    };
+    try {
+      const body: Record<string, unknown> = { customerCep };
+      if (restaurantCep) body.originCep = restaurantCep;
+      const res = await apiClient.post<DeliveryCalculationApi>('/delivery/calculate', body);
+      const data = res.data;
+      return {
+        distance: data.distance,
+        zone: data.zone ? zoneFromApi(data.zone) : null,
+        deliveryFee: data.deliveryFee / 100,
+        canDeliver: data.canDeliver,
+        message: data.message,
+      };
+    } catch (error) {
+      toast({
+        title: 'Erro no cálculo',
+        description: 'Não foi possível calcular a distância entre os CEPs.',
+        variant: 'destructive',
+      });
+      throw new Error('Erro ao calcular distância entre os CEPs');
+    }
   };
 
   // Função para validar CEP brasileiro
@@ -85,9 +98,8 @@ export const useDeliveryCalculator = () => {
 
   return {
     calculateDeliveryFee,
-    calculateDistance,
     findZoneForDistance,
     validateCep,
-    formatCep
+    formatCep,
   };
 };

@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { format } from 'date-fns';
 import { CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { apiClient } from '@/lib/apiClient';
 
 interface Employee {
   id: string;
@@ -61,16 +61,11 @@ const WorkRecordForm = ({ isOpen, onClose, employee, onSave }: WorkRecordFormPro
 
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from('employee_work_records')
-        .insert({
-          employee_id: employee.id,
-          work_date: format(workDate, 'yyyy-MM-dd'),
-          hours_worked: employee.payment_type === 'hourly' ? parseFloat(hoursWorked) : null,
-          days_worked: employee.payment_type === 'daily' ? parseInt(daysWorked) : null
-        });
-
-      if (error) throw error;
+      await apiClient.post(`/employees/${employee.id}/work-records`, {
+        work_date: format(workDate, 'yyyy-MM-dd'),
+        hours_worked: employee.payment_type === 'hourly' ? parseFloat(hoursWorked) : null,
+        days_worked: employee.payment_type === 'daily' ? parseInt(daysWorked) : null,
+      });
 
       toast({
         title: "Registro salvo",
