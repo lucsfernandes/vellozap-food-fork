@@ -1,0 +1,40 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: vellozap-food-ingress
+  namespace: vellozap-food
+  labels:
+    app.kubernetes.io/name: vellozap-food
+    app.kubernetes.io/part-of: arcobatrox
+spec:
+  # Only handle HTTPS here. The `web` (port 80) entrypoint should be wired
+  # globally to redirect to `websecure` in your Traefik static config —
+  # serving plain HTTP for the app would break HSTS + secure cookies.
+  entryPoints:
+    - websecure
+  routes:
+    # Unlike receive-forms, the SPA calls the API through its OWN public host
+    # (api.vellozap-food.arcobatrox.com.br, served by the backend IngressRoute), so
+    # there is no /api path-prefix route to the backend here — the frontend host
+    # only serves the static SPA.
+    - match: Host(`vellozap-food.arcobatrox.com.br`) && PathPrefix(`/`)
+      kind: Rule
+      priority: 10
+      services:
+        - name: vellozap-food
+          port: 80
+    # www -> apex redirect. This route only listens on `websecure`, so the
+    # http->https redirect middleware is a no-op here (HTTP is redirected
+    # globally in Traefik's static config); we still attach it for defense in
+    # depth in case the `web` entrypoint is added later.
+    - match: Host(`www.vellozap-food.arcobatrox.com.br`) && PathPrefix(`/`)
+      kind: Rule
+      priority: 10
+      middlewares:
+        - name: vellozap-food-redirect-www
+        - name: vellozap-food-redirect-to-https
+      services:
+        - name: vellozap-food
+          port: 80
+  tls:
+    secretName: vellozap-food-tls

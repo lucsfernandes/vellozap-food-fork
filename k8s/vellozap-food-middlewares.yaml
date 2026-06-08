@@ -1,0 +1,26 @@
+# Traefik middlewares for the vellozap-food frontend (SPA) IngressRoute.
+#
+# No CORS middleware here: nginx serves only same-origin static assets, so there
+# are no cross-origin responses to annotate. Cross-origin API calls go to the
+# backend host, whose own app handles CORS. We keep only the HTTP->HTTPS and
+# www->apex redirects.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: vellozap-food-redirect-to-https
+  namespace: vellozap-food
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: vellozap-food-redirect-www
+  namespace: vellozap-food
+spec:
+  redirectRegex:
+    regex: ^https?://www\.(.*)
+    replacement: https://${1}
+    permanent: true

@@ -1,0 +1,43 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vellozap-food
+  namespace: vellozap-food
+  labels:
+    app.kubernetes.io/name: vellozap-food
+    app.kubernetes.io/part-of: arcobatrox
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vellozap-food
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Traefik proxies straight to the pod's containerPort (8080), not to the
+    # Service port. Make sure the namespace where Traefik runs is labeled
+    # `kubernetes.io/metadata.name: traefik` (set automatically since k8s 1.22,
+    # but double-check on your cluster).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+      ports:
+        - port: 8080
+          protocol: TCP
+  egress:
+    # Cluster DNS — required for any name resolution at all.
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # The SPA itself does not talk to the backend or Supabase from the pod — the
+    # user's browser does. nginx only serves static assets, so no backend/DB
+    # egress is needed. If you add an nginx proxy_pass to the API, add an egress
+    # rule for the vellozap-food-service pod (port 3333) here.

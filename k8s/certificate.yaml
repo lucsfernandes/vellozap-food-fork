@@ -1,0 +1,26 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: vellozap-food
+  namespace: vellozap-food
+  labels:
+    app.kubernetes.io/part-of: arcobatrox
+spec:
+  # Frontend gets its own TLS secret. Backend uses `vellozap-food-service-tls`
+  # for api.vellozap-food.arcobatrox.com.br — they MUST NOT share a Secret,
+  # otherwise cert-manager will fight itself overwriting it for different SANs.
+  secretName: vellozap-food-tls
+  duration: 2160h
+  renewBefore: 360h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+    group: cert-manager.io
+  commonName: vellozap-food.arcobatrox.com.br
+  dnsNames:
+    - vellozap-food.arcobatrox.com.br
+    - www.vellozap-food.arcobatrox.com.br

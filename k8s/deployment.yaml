@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vellozap-food
+  namespace: vellozap-food
+  labels:
+    app.kubernetes.io/name: vellozap-food
+    app.kubernetes.io/component: app
+    app.kubernetes.io/part-of: arcobatrox
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vellozap-food
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vellozap-food
+        app.kubernetes.io/component: app
+        app.kubernetes.io/part-of: arcobatrox
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        # 101 = "nginx" user shipped by nginx:alpine. The Dockerfile must chown
+        # /var/cache/nginx and /var/run/nginx.pid to this user.
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: frontend
+          image: REPLACE_IMAGE
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          # NOTE: VITE_API_URL is consumed at BUILD time by Vite
+          # (`import.meta.env`), so injecting it at runtime via envFrom has no
+          # effect on the served bundle. The configmap is kept for visibility
+          # only; the actual API base URL is baked into the image via the
+          # Dockerfile ARG. Update the CI build to pass --build-arg
+          # VITE_API_URL=https://api.vellozap-food.arcobatrox.com.br/api when needed.
+          envFrom:
+            - configMapRef:
+                name: vellozap-food-config
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            # nginx writes temp/cache files here at runtime — the read-only
+            # rootfs would otherwise block startup.
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: "20m"
+              memory: "32Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+          lifecycle:
+            preStop:
+              # Give Traefik a few seconds to drop us from the endpoint pool
+              # before nginx starts refusing connections during rollouts.
+              exec:
+                command: ["sh", "-c", "sleep 5"]
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
